@@ -352,6 +352,11 @@
     render();
   }
 
+  function formatSyncTime(d = new Date()) {
+    const pad = n => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   // --- GITHUB SYNC (COMPATÍVEL COM MAILSPRING SCRAPBOOK) ---
   async function syncWithGitHub(showFeedback = false) {
     const cfg = getConfig();
@@ -485,7 +490,7 @@
       saveNotes(false);
 
       state.isSyncing = false;
-      state.lastSyncTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      state.lastSyncTime = formatSyncTime();
       updateSyncStatus(`sync: ${state.lastSyncTime}`, true);
       if (showFeedback) {
         showSettingsStatus('Notas sincronizadas com sucesso com o GitHub!', 'success');
@@ -714,12 +719,6 @@
           </div>
           <span class="note-card-date">${dateStr}</span>
         </div>
-        ${snippet ? `<div class="note-card-snippet">${escapeHtml(snippet)}</div>` : ''}
-        ${note.tags && note.tags.length > 0 ? `
-          <div class="note-card-tags">
-            ${note.tags.map(t => `<span class="note-card-tag">${escapeHtml(cleanTag(t))}</span>`).join('')}
-          </div>
-        ` : ''}
       `;
 
       container.appendChild(card);

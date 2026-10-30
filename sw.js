@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eink-notes-v4';
+const CACHE_NAME = 'eink-notes-v5';
 const ASSETS = [
   './',
   './index.html',

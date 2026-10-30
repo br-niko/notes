@@ -249,17 +249,16 @@ html, body {
 .note-card {
   border: var(--border-w) solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: var(--bg);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .note-card.active {
   border-width: 2px;
-  padding: 9px 11px;
+  padding: 7px 9px;
 }
 
 .note-card-header {
@@ -330,9 +329,9 @@ html, body {
 
 /* DETALHE / EDITOR */
 .view-detail {
-  border: var(--border-w) solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
+  border: none;
+  border-radius: 0;
+  padding: 4px 2px;
   background: var(--bg);
 }
 
