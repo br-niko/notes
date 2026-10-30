@@ -223,8 +223,8 @@
     t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
 
     // Hashtags: #tag
-    t = t.replace(/(?:^|\s)(#([a-zA-Z0-9_\u00C0-\u017F-]+))/g, (match, fullTag) => {
-      return ` <span class="note-card-tag">${fullTag}</span>`;
+    t = t.replace(/(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g, (match, rawTag) => {
+      return ` <span class="note-card-tag">${rawTag}</span>`;
     });
 
     return t;
@@ -637,7 +637,7 @@
     for (const tag of allTags) {
       const chip = document.createElement('span');
       chip.className = 'tag-chip ' + (state.filterTag === tag ? 'active' : '');
-      chip.textContent = tag;
+      chip.textContent = tag.replace(/^#/, "");
       chip.onclick = () => {
         state.filterTag = state.filterTag === tag ? null : tag;
         render();
@@ -702,7 +702,7 @@
         ${snippet ? `<div class="note-card-snippet">${escapeHtml(snippet)}</div>` : ''}
         ${note.tags && note.tags.length > 0 ? `
           <div class="note-card-tags">
-            ${note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t)}</span>`).join('')}
+            ${note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t.replace(/^#/, ""))}</span>`).join('')}
           </div>
         ` : ''}
       `;
@@ -747,7 +747,7 @@
 
     // Tags
     if (note.tags && note.tags.length > 0) {
-      dom.noteTagsRow.innerHTML = note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t)}</span>`).join('');
+      dom.noteTagsRow.innerHTML = note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t.replace(/^#/, ""))}</span>`).join('');
     } else {
       dom.noteTagsRow.innerHTML = '';
     }
