@@ -404,6 +404,36 @@
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  let lastSyncTimeMs = 0;
+
+  async function checkGitHubResponse(res, actionName) {
+    if (res.ok) return;
+
+    if (res.status === 403) {
+      const resetHeader = res.headers.get("x-ratelimit-reset");
+      if (resetHeader) {
+        const resetDate = new Date(parseInt(resetHeader, 10) * 1000);
+        const pad = n => String(n).padStart(2, "0");
+        const resetHour = `${pad(resetDate.getHours())}:${pad(resetDate.getMinutes())}`;
+        const minsLeft = Math.max(1, Math.ceil((resetDate.getTime() - Date.now()) / 60000));
+        throw new Error(`Limite de requisições do GitHub atingido (Rate Limit). O GitHub liberará novamente às ${resetHour} (em ~${minsLeft} min).`);
+      }
+    }
+
+    const errData = await res.json().catch(() => ({}));
+    const msg = errData.message || res.statusText || "Erro desconhecido";
+    throw new Error(`${actionName} (${res.status}: ${msg})`);
+  }
+
+  function throttledSync(showFeedback = false) {
+    const now = Date.now();
+    if (!showFeedback && (now - lastSyncTimeMs < 60000 || state.isSyncing)) {
+      return;
+    }
+    lastSyncTimeMs = now;
+    syncWithGitHub(showFeedback);
+  }
+
   // --- GITHUB SYNC (COMPATÍVEL COM MAILSPRING SCRAPBOOK) ---
   async function syncWithGitHub(showFeedback = false) {
     const cfg = getConfig();
@@ -458,15 +488,14 @@
           },
         });
 
-        if (getRes.ok) {
-          gistData = await getRes.json();
-          if (gistData.files && gistData.files['mailspring-notes.json']) {
-            try {
-              const remoteNotes = JSON.parse(gistData.files['mailspring-notes.json'].content);
-              mergedNotes = mergeNotes(state.notes, remoteNotes);
-            } catch (err) {
-              console.warn('Erro ao decodificar JSON remoto:', err);
-            }
+        await checkGitHubResponse(getRes, 'Erro ao consultar Gist');
+        gistData = await getRes.json();
+        if (gistData.files && gistData.files['mailspring-notes.json']) {
+          try {
+            const remoteNotes = JSON.parse(gistData.files['mailspring-notes.json'].content);
+            mergedNotes = mergeNotes(state.notes, remoteNotes);
+          } catch (err) {
+            console.warn('Erro ao decodificar JSON remoto:', err);
           }
         }
       }
@@ -504,10 +533,7 @@
           }),
         });
 
-        if (!updateRes.ok) {
-          const errData = await updateRes.json().catch(() => ({}));
-          throw new Error(`GitHub Gist (${updateRes.status}: ${errData.message || updateRes.statusText})`);
-        }
+        await checkGitHubResponse(updateRes, 'Erro ao atualizar Gist');
       } else {
         const createRes = await fetch('https://api.github.com/gists', {
           method: 'POST',
@@ -558,7 +584,11 @@
       console.error('Falha de sincronização:', err);
       state.isSyncing = false;
       state.syncError = err.message || 'Erro de conexão';
-      updateSyncStatus('erro no sync');
+      if (state.syncError.includes("Rate Limit") || state.syncError.includes("rate limit")) {
+        updateSyncStatus('limite github');
+      } else {
+        updateSyncStatus('erro no sync');
+      }
       if (dom.syncStatus) {
         dom.syncStatus.title = state.syncError;
       }
@@ -611,8 +641,8 @@
 
     if (autoSyncTimer) clearTimeout(autoSyncTimer);
     autoSyncTimer = setTimeout(() => {
-      syncWithGitHub(false);
-    }, 5000);
+      throttledSync(false);
+    }, 10000);
   }
 
   function updateSyncStatus(text, isSynced = false) {
@@ -1055,11 +1085,11 @@
     // Auto-sync a cada 5 minutos
     setInterval(() => syncWithGitHub(false), 5 * 60 * 1000);
 
-    // Sincronizar ao focar ou retornar para a aba/tela do e-ink
+    // Sincronizar com protecao de limite ao focar ou retornar para a aba/tela do e-ink
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) syncWithGitHub(false);
+      if (!document.hidden) throttledSync(false);
     });
-    window.addEventListener("focus", () => syncWithGitHub(false));
+    window.addEventListener("focus", () => throttledSync(false));
 
     // Register Service Worker for offline PWA
     if ('serviceWorker' in navigator) {
