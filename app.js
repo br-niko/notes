@@ -321,7 +321,8 @@
     state.selectedId = note.id;
     state.viewMode = 'edit';
     saveNotes(true);
-    render();
+    renderTagsBar();
+    renderNotesList();
     showDetailView();
     setTimeout(() => {
       dom.noteTextarea.focus();
@@ -699,7 +700,6 @@
       card.onclick = () => {
         state.selectedId = note.id;
         state.viewMode = 'reading';
-        render();
         showDetailView();
       };
 
@@ -744,17 +744,19 @@
     dom.btnModeRead.className = 'btn btn-sm ' + (state.viewMode === 'reading' ? 'active' : '');
     dom.btnModeEdit.className = 'btn btn-sm ' + (state.viewMode === 'edit' ? 'active' : '');
 
+    const noteContent = note.body || note.content || '';
+
     // Format toolbar
     if (state.viewMode === 'edit') {
       dom.formatToolbar.classList.remove('hidden');
       dom.readingPane.classList.add('hidden');
       dom.editPane.classList.remove('hidden');
-      dom.noteTextarea.value = note.body || '';
+      dom.noteTextarea.value = noteContent;
     } else {
       dom.formatToolbar.classList.add('hidden');
       dom.readingPane.classList.remove('hidden');
       dom.editPane.classList.add('hidden');
-      dom.readingPane.innerHTML = renderMarkdown(note.body || '');
+      dom.readingPane.innerHTML = renderMarkdown(noteContent);
     }
 
     // Tags - exibidas sem o caractere '#'
@@ -810,6 +812,9 @@
     dom.viewDetail.classList.remove('hidden');
     dom.btnBackToList.classList.remove('hidden');
     if (dom.appTitle) dom.appTitle.textContent = 'notas';
+    renderNoteDetail();
+    if (dom.readingPane) dom.readingPane.scrollTop = 0;
+    window.scrollTo(0, 0);
   }
 
   // --- INITIALIZATION ---
