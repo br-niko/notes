@@ -974,6 +974,15 @@
     // Auto-sync initial run
     syncWithGitHub(false);
 
+    // Auto-sync a cada 5 minutos
+    setInterval(() => syncWithGitHub(false), 5 * 60 * 1000);
+
+    // Sincronizar ao focar ou retornar para a aba/tela do e-ink
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) syncWithGitHub(false);
+    });
+    window.addEventListener("focus", () => syncWithGitHub(false));
+
     // Register Service Worker for offline PWA
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(err => {
