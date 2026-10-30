@@ -487,15 +487,7 @@
         };
       }
 
-      // Deleta arquivos .md de notas excluidas do Gist
-      const deletedNotesMap = getDeletedNotes();
-      for (const info of Object.values(deletedNotesMap)) {
-        if (info && info.filename && !activeFilenames.has(info.filename)) {
-          filesPayload[info.filename] = null;
-        }
-      }
-
-      // Deleta do Gist arquivos remotos de notas que nao existem mais
+      // Deleta do Gist APENAS arquivos que comprovadamente existem remotamente
       if (gistData && gistData.files) {
         for (const fname of Object.keys(gistData.files)) {
           if (fname !== 'mailspring-notes.json' && fname.endsWith('.md') && !activeFilenames.has(fname)) {
@@ -506,7 +498,7 @@
 
       // 4. Envia para o GitHub
       if (gistId) {
-        const updateRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+        let updateRes = await fetch(`https://api.github.com/gists/${gistId}`, {
           method: 'PATCH',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -519,8 +511,32 @@
           }),
         });
 
+        // Se falhar (ex: erro 422 na exclusao de arquivo .md), tenta atualizar apenas os arquivos ativos
         if (!updateRes.ok) {
-          throw new Error(`Erro ao atualizar Gist (${updateRes.status})`);
+          const fallbackPayload = {
+            'mailspring-notes.json': filesPayload['mailspring-notes.json'],
+          };
+          for (const [k, v] of Object.entries(filesPayload)) {
+            if (v !== null) fallbackPayload[k] = v;
+          }
+          const retryRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              description: 'Mailspring Scrapbook Notes Vault',
+              files: fallbackPayload,
+            }),
+          });
+          if (retryRes.ok) {
+            updateRes = retryRes;
+          } else {
+            const errData = await updateRes.json().catch(() => ({}));
+            throw new Error(`Erro ao atualizar Gist (${updateRes.status}: ${errData.message || ''})`);
+          }
         }
       } else {
         const createRes = await fetch('https://api.github.com/gists', {
