@@ -471,34 +471,27 @@
         }
       }
 
-      // 3. Monta o payload de envio (mailspring-notes.json + .md para cada nota)
+      // 3. Monta o payload de envio (mailspring-notes.json + .md para cada nota com conteudo)
       const filesPayload = {
         'mailspring-notes.json': {
           content: JSON.stringify(mergedNotes, null, 2),
         },
       };
 
-      const activeFilenames = new Set();
-      for (const note of mergedNotes.slice(0, 50)) {
-        const safeTitle = (note.title || 'note').replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_') + '.md';
-        activeFilenames.add(safeTitle);
-        filesPayload[safeTitle] = {
-          content: note.body || note.content || '',
-        };
-      }
-
-      // Deleta do Gist APENAS arquivos que comprovadamente existem remotamente
-      if (gistData && gistData.files) {
-        for (const fname of Object.keys(gistData.files)) {
-          if (fname !== 'mailspring-notes.json' && fname.endsWith('.md') && !activeFilenames.has(fname)) {
-            filesPayload[fname] = null;
-          }
+      for (const note of mergedNotes.slice(0, 30)) {
+        const text = (note.body || note.content || '').trim();
+        // O GitHub Gists rejeita com 422 se um arquivo tiver conteudo vazio
+        if (text) {
+          const safeTitle = (note.title || 'note').replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_') + '.md';
+          filesPayload[safeTitle] = {
+            content: text,
+          };
         }
       }
 
       // 4. Envia para o GitHub
       if (gistId) {
-        let updateRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+        const updateRes = await fetch(`https://api.github.com/gists/${gistId}`, {
           method: 'PATCH',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -511,32 +504,9 @@
           }),
         });
 
-        // Se falhar (ex: erro 422 na exclusao de arquivo .md), tenta atualizar apenas os arquivos ativos
         if (!updateRes.ok) {
-          const fallbackPayload = {
-            'mailspring-notes.json': filesPayload['mailspring-notes.json'],
-          };
-          for (const [k, v] of Object.entries(filesPayload)) {
-            if (v !== null) fallbackPayload[k] = v;
-          }
-          const retryRes = await fetch(`https://api.github.com/gists/${gistId}`, {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/vnd.github+json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              description: 'Mailspring Scrapbook Notes Vault',
-              files: fallbackPayload,
-            }),
-          });
-          if (retryRes.ok) {
-            updateRes = retryRes;
-          } else {
-            const errData = await updateRes.json().catch(() => ({}));
-            throw new Error(`Erro ao atualizar Gist (${updateRes.status}: ${errData.message || ''})`);
-          }
+          const errData = await updateRes.json().catch(() => ({}));
+          throw new Error(`GitHub Gist (${updateRes.status}: ${errData.message || updateRes.statusText})`);
         }
       } else {
         const createRes = await fetch('https://api.github.com/gists', {
@@ -589,6 +559,9 @@
       state.isSyncing = false;
       state.syncError = err.message || 'Erro de conexão';
       updateSyncStatus('erro no sync');
+      if (dom.syncStatus) {
+        dom.syncStatus.title = state.syncError;
+      }
       if (showFeedback) {
         showSettingsStatus(`Falha: ${state.syncError}`, 'error');
       }
@@ -946,8 +919,18 @@
     };
 
     dom.btnSync.onclick = () => {
-      syncWithGitHub(false);
+      syncWithGitHub(true);
     };
+    if (dom.syncStatus) {
+      dom.syncStatus.style.cursor = 'pointer';
+      dom.syncStatus.onclick = () => {
+        if (state.syncError) {
+          alert(`Detalhes do erro de sincronização:\n${state.syncError}`);
+        } else {
+          syncWithGitHub(true);
+        }
+      };
+    }
 
     dom.btnSettings.onclick = () => {
       dom.modalSettings.classList.remove('hidden');
