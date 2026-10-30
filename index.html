@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>E-Ink Notes (Scrapbook)</title>
+  <script>
+    if (location.pathname.endsWith('/notes')) {
+      location.replace(location.pathname + '/' + location.search + location.hash);
+    }
+  </script>
+  <link rel="manifest" href="manifest.json?v=1">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <div id="app" class="container">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-title-area">
+        <button id="btn-back-to-list" class="btn btn-icon btn-back hidden" title="Voltar para a lista" aria-label="Voltar">
+          <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <h1 id="app-title">Notas</h1>
+        <span id="sync-status" class="sync-badge">Offline</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-new-note" class="btn btn-primary" title="Nova nota">+ Nova</button>
+        <button id="btn-toggle-search" class="btn btn-icon" title="Buscar notas" aria-label="Buscar">
+          <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </button>
+        <button id="btn-sync" class="btn btn-icon" title="Sincronizar com GitHub" aria-label="Sincronizar">
+          <svg class="icon-svg" viewBox="0 0 24 24">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+        </button>
+        <button id="btn-settings" class="btn btn-icon" title="Configurações / GitHub Sync" aria-label="Configurações">
+          <svg class="icon-svg" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- SEARCH ROW (Toggleable) -->
+    <div id="search-row" class="search-row hidden">
+      <input type="text" id="search-input" class="search-input" placeholder="Buscar notas ou #tags..." autocomplete="off">
+      <button id="btn-clear-search" class="btn btn-sm">Limpar</button>
+    </div>
+
+    <!-- MAIN WORKSPACE -->
+    <main class="main-workspace">
+      <!-- 1. LIST VIEW -->
+      <section id="view-list" class="view-panel view-list">
+        <!-- TAGS BAR -->
+        <div id="tags-bar" class="tags-bar">
+          <!-- Filled dynamically -->
+        </div>
+
+        <!-- NOTES LIST CONTAINER -->
+        <div id="notes-list" class="notes-list">
+          <!-- Filled dynamically -->
+        </div>
+      </section>
+
+      <!-- 2. DETAIL / EDITOR VIEW -->
+      <section id="view-detail" class="view-panel view-detail hidden">
+        <div class="detail-header">
+          <input type="text" id="note-title-input" class="note-title-input" placeholder="Título da nota...">
+          <div class="detail-actions">
+            <div class="view-mode-group">
+              <button id="btn-mode-read" class="btn btn-sm active" title="Modo Leitura">Leitura</button>
+              <button id="btn-mode-edit" class="btn btn-sm" title="Modo Edição">Editar</button>
+            </div>
+            <button id="btn-pin-note" class="btn btn-icon" title="Fixar nota">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M12 17v5M5 17h14l-2-6V4h1V2H6v2h1v7l-2 6z"/></svg>
+            </button>
+            <button id="btn-delete-note" class="btn btn-icon" title="Excluir nota">
+              <svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- FORMAT TOOLBAR (visible in edit mode) -->
+        <div id="format-toolbar" class="format-toolbar hidden">
+          <button class="btn btn-format" data-format="bold" title="Negrito">B</button>
+          <button class="btn btn-format" data-format="italic" title="Itálico">I</button>
+          <button class="btn btn-format" data-format="h1" title="Título 1">H1</button>
+          <button class="btn btn-format" data-format="h2" title="Título 2">H2</button>
+          <button class="btn btn-format" data-format="task" title="Checklist">- [ ]</button>
+          <button class="btn btn-format" data-format="list" title="Lista">- </button>
+          <button class="btn btn-format" data-format="quote" title="Citação">&gt;</button>
+          <button class="btn btn-format" data-format="code" title="Código">&lt;/&gt;</button>
+        </div>
+
+        <!-- NOTE TAGS ROW -->
+        <div id="note-tags-row" class="note-tags-row"></div>
+
+        <!-- READING VIEW (Clean Markdown + Interactive Checklists) -->
+        <div id="reading-pane" class="reading-pane"></div>
+
+        <!-- EDIT VIEW (Clean Textarea) -->
+        <div id="edit-pane" class="edit-pane hidden">
+          <textarea id="note-textarea" class="note-textarea" placeholder="Escreva aqui sua nota em Markdown ou checklists com - [ ]..." spellcheck="false"></textarea>
+        </div>
+
+        <!-- FOOTER STATS -->
+        <div class="detail-footer">
+          <span id="note-stats">0 palavras · 0 caracteres</span>
+          <span id="note-date"></span>
+        </div>
+      </section>
+    </main>
+
+    <!-- SETTINGS MODAL -->
+    <div id="modal-settings" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2>Configurações do GitHub Sync</h2>
+          <button id="btn-close-settings" class="btn btn-icon" aria-label="Fechar">
+            <svg class="icon-svg" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">
+            Sincronize suas notas com o mesmo cofre (Gist) do Mailspring Scrapbook Notes.
+          </p>
+
+          <label class="form-label" for="input-github-token">
+            Personal Access Token do GitHub (com escopo <code>gist</code>):
+          </label>
+          <input type="password" id="input-github-token" class="form-input" placeholder="ghp_xxxxxxxxxxxxxxxxx" autocomplete="off">
+
+          <label class="form-label" for="input-gist-id" style="margin-top: 10px;">
+            Gist ID (Opcional - deixe vazio para localizar/criar automaticamente):
+          </label>
+          <input type="text" id="input-gist-id" class="form-input" placeholder="Ex: 8f4a2b1c..." autocomplete="off">
+
+          <div id="settings-status-msg" class="status-msg"></div>
+
+          <div class="modal-btn-row">
+            <button id="btn-save-settings" class="btn btn-primary">Salvar e Sincronizar</button>
+            <button id="btn-sync-now" class="btn">Sincronizar Agora</button>
+          </div>
+
+          <hr class="divider">
+
+          <h3 style="font-size: 15px; margin-bottom: 8px;">Backup Local</h3>
+          <div class="modal-btn-row">
+            <button id="btn-export-backup" class="btn btn-sm">Baixar Backup (.json)</button>
+            <label class="btn btn-sm btn-file">
+              Restaurar Backup
+              <input type="file" id="input-import-backup" accept=".json" style="display: none;">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>
