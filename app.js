@@ -14,13 +14,13 @@
   let state = {
     notes: [],
     selectedId: null,
+    currentView: 'list', // 'list' | 'detail'
     filterTag: null,
     searchQuery: '',
     viewMode: 'reading', // 'reading' | 'edit'
     isSyncing: false,
     syncError: null,
     lastSyncTime: null,
-    isMobile: window.innerWidth <= 768,
   };
 
   let autoSyncTimer = null;
@@ -41,7 +41,6 @@
     viewDetail: document.getElementById('view-detail'),
     tagsBar: document.getElementById('tags-bar'),
     notesList: document.getElementById('notes-list'),
-    noteTitleInput: document.getElementById('note-title-input'),
     btnModeRead: document.getElementById('btn-mode-read'),
     btnModeEdit: document.getElementById('btn-mode-edit'),
     btnPinNote: document.getElementById('btn-pin-note'),
@@ -80,7 +79,11 @@
     localStorage.setItem(CONFIG_KEY, JSON.stringify(updated));
   }
 
-  // --- MARKDOWN UTILITIES ---
+  // --- TAG UTILITIES ---
+  function cleanTag(tag) {
+    return (tag || '').replace(/^#+/, '').trim();
+  }
+
   function extractTags(markdown) {
     if (!markdown) return [];
     const regex = /(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g;
@@ -89,7 +92,7 @@
     while ((m = regex.exec(markdown)) !== null) {
       const tag = m[1].toLowerCase();
       if (!/^\d+$/.test(tag)) {
-        tags.add('#' + tag);
+        tags.add(tag); // Salva sem o '#'
       }
     }
     return Array.from(tags);
@@ -222,9 +225,9 @@
     // Inline code: `code`
     t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // Hashtags: #tag
-    t = t.replace(/(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g, (match, rawTag) => {
-      return ` <span class="note-card-tag">${rawTag}</span>`;
+    // Hashtags: #tag -> mostra apenas o texto da tag, sem o '#'
+    t = t.replace(/(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g, (match, tagText) => {
+      return ` <span class="note-card-tag">${escapeHtml(tagText)}</span>`;
     });
 
     return t;
@@ -298,7 +301,8 @@
       updated_at: now,
     };
     state.notes = [note];
-    state.selectedId = note.id;
+    state.selectedId = null; // Nunca abre automaticamente
+    state.currentView = 'list';
     saveNotes(false);
   }
 
@@ -318,9 +322,7 @@
     state.viewMode = 'edit';
     saveNotes(true);
     render();
-    if (state.isMobile) {
-      showDetailView();
-    }
+    showDetailView();
     setTimeout(() => {
       dom.noteTextarea.focus();
     }, 50);
@@ -333,12 +335,10 @@
     if (!confirm(`Deseja excluir "${title}"?`)) return;
 
     state.notes = state.notes.filter(n => n.id !== state.selectedId);
-    state.selectedId = state.notes.length > 0 ? state.notes[0].id : null;
+    state.selectedId = null;
     saveNotes(true);
     render();
-    if (state.isMobile) {
-      showListView();
-    }
+    showListView();
   }
 
   function togglePinCurrentNote() {
@@ -357,7 +357,7 @@
     const token = cfg.githubToken ? cfg.githubToken.trim() : null;
 
     if (!token) {
-      updateSyncStatus('Local');
+      updateSyncStatus('local');
       if (showFeedback) {
         showSettingsStatus('Token do GitHub não configurado. Adicione-o acima.', 'error');
       }
@@ -366,7 +366,7 @@
 
     state.isSyncing = true;
     state.syncError = null;
-    updateSyncStatus('Sincronizando...');
+    updateSyncStatus('sincronizando...');
     if (showFeedback) showSettingsStatus('Conectando ao GitHub...', '');
 
     try {
@@ -476,23 +476,30 @@
 
       // Atualiza estado local com as notas mescladas
       state.notes = mergedNotes;
-      if (!state.selectedId || !state.notes.some(n => n.id === state.selectedId)) {
-        state.selectedId = state.notes.length > 0 ? state.notes[0].id : null;
+      // NUNCA seleciona automaticamente uma nota se o usuário estiver na lista!
+      if (state.selectedId && !state.notes.some(n => n.id === state.selectedId)) {
+        state.selectedId = null;
+        state.currentView = 'list';
       }
       saveNotes(false);
 
       state.isSyncing = false;
       state.lastSyncTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      updateSyncStatus(`Sync: ${state.lastSyncTime}`, true);
+      updateSyncStatus(`sync: ${state.lastSyncTime}`, true);
       if (showFeedback) {
         showSettingsStatus('Notas sincronizadas com sucesso com o GitHub!', 'success');
       }
       render();
+      if (state.currentView === 'detail' && state.selectedId) {
+        showDetailView();
+      } else {
+        showListView();
+      }
     } catch (err) {
       console.error('Falha de sincronização:', err);
       state.isSyncing = false;
       state.syncError = err.message || 'Erro de conexão';
-      updateSyncStatus('Erro no sync');
+      updateSyncStatus('erro no sync');
       if (showFeedback) {
         showSettingsStatus(`Falha: ${state.syncError}`, 'error');
       }
@@ -539,8 +546,9 @@
   }
 
   function updateSyncStatus(text, isSynced = false) {
+    if (!dom.syncStatus) return;
     dom.syncStatus.textContent = text;
-    dom.syncStatus.className = 'sync-badge ' + (isSynced ? 'synced' : (text.includes('Sincronizando') ? 'syncing' : ''));
+    dom.syncStatus.className = 'meta-sync ' + (isSynced ? 'synced' : (text.toLowerCase().includes('sincronizando') ? 'syncing' : ''));
   }
 
   function showSettingsStatus(msg, type) {
@@ -605,14 +613,17 @@
   function render() {
     renderTagsBar();
     renderNotesList();
-    renderNoteDetail();
+    if (state.currentView === 'detail' && state.selectedId) {
+      renderNoteDetail();
+    }
   }
 
   function renderTagsBar() {
     const allTags = new Set();
     for (const n of state.notes) {
       for (const t of (n.tags || [])) {
-        allTags.add(t);
+        const clean = cleanTag(t).toLowerCase();
+        if (clean) allTags.add(clean);
       }
     }
 
@@ -624,20 +635,21 @@
     dom.tagsBar.style.display = 'flex';
     dom.tagsBar.innerHTML = '';
 
-    // "All" chip
+    // "Todas" chip
     const allChip = document.createElement('span');
     allChip.className = 'tag-chip ' + (state.filterTag === null ? 'active' : '');
-    allChip.textContent = 'All';
+    allChip.textContent = 'Todas';
     allChip.onclick = () => {
       state.filterTag = null;
       render();
     };
     dom.tagsBar.appendChild(allChip);
 
-    for (const tag of allTags) {
+    const sorted = Array.from(allTags).sort();
+    for (const tag of sorted) {
       const chip = document.createElement('span');
       chip.className = 'tag-chip ' + (state.filterTag === tag ? 'active' : '');
-      chip.textContent = tag.replace(/^#/, "");
+      chip.textContent = tag; // Mostra apenas o texto, sem o '#'
       chip.onclick = () => {
         state.filterTag = state.filterTag === tag ? null : tag;
         render();
@@ -654,15 +666,19 @@
 
     // Filter by tag
     if (state.filterTag) {
-      list = list.filter(n => (n.tags || []).includes(state.filterTag));
+      const target = state.filterTag.toLowerCase();
+      list = list.filter(n =>
+        (n.tags || []).some(t => cleanTag(t).toLowerCase() === target)
+      );
     }
 
     // Filter by search query
     if (state.searchQuery) {
-      const q = state.searchQuery.toLowerCase();
+      const q = cleanTag(state.searchQuery).toLowerCase();
       list = list.filter(n =>
         (n.title || '').toLowerCase().includes(q) ||
-        (n.body || '').toLowerCase().includes(q)
+        (n.body || '').toLowerCase().includes(q) ||
+        (n.tags || []).some(t => cleanTag(t).toLowerCase().includes(q))
       );
     }
 
@@ -682,10 +698,9 @@
       card.className = 'note-card ' + (note.id === state.selectedId ? 'active' : '');
       card.onclick = () => {
         state.selectedId = note.id;
+        state.viewMode = 'reading';
         render();
-        if (state.isMobile) {
-          showDetailView();
-        }
+        showDetailView();
       };
 
       const dateStr = formatDate(note.updated_at || note.created_at);
@@ -702,7 +717,7 @@
         ${snippet ? `<div class="note-card-snippet">${escapeHtml(snippet)}</div>` : ''}
         ${note.tags && note.tags.length > 0 ? `
           <div class="note-card-tags">
-            ${note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t.replace(/^#/, ""))}</span>`).join('')}
+            ${note.tags.map(t => `<span class="note-card-tag">${escapeHtml(cleanTag(t))}</span>`).join('')}
           </div>
         ` : ''}
       `;
@@ -714,15 +729,12 @@
   function renderNoteDetail() {
     const note = state.notes.find(n => n.id === state.selectedId);
 
-    if (!note) {
+    if (!note || state.currentView !== 'detail') {
       dom.viewDetail.classList.add('hidden');
       return;
     }
 
     dom.viewDetail.classList.remove('hidden');
-
-    // Title
-    if (dom.noteTitleInput) dom.noteTitleInput.value = note.title || '';
 
     // Pin button active state
     dom.btnPinNote.style.background = note.pinned ? '#000000' : '';
@@ -745,9 +757,9 @@
       dom.readingPane.innerHTML = renderMarkdown(note.body || '');
     }
 
-    // Tags
+    // Tags - exibidas sem o caractere '#'
     if (note.tags && note.tags.length > 0) {
-      dom.noteTagsRow.innerHTML = note.tags.map(t => `<span class="note-card-tag">${escapeHtml(t.replace(/^#/, ""))}</span>`).join('');
+      dom.noteTagsRow.innerHTML = note.tags.map(t => `<span class="note-card-tag">${escapeHtml(cleanTag(t))}</span>`).join('');
     } else {
       dom.noteTagsRow.innerHTML = '';
     }
@@ -766,15 +778,6 @@
   }
 
   // --- EVENT HANDLERS ---
-  function onTitleChange() {
-    const note = state.notes.find(n => n.id === state.selectedId);
-    if (!note) return;
-    note.title = dom.noteTitleInput.value.trim() || 'Nova Nota';
-    note.updated_at = new Date().toISOString();
-    saveNotes(true);
-    renderNotesList();
-  }
-
   function onBodyChange() {
     const note = state.notes.find(n => n.id === state.selectedId);
     if (!note) return;
@@ -784,7 +787,6 @@
 
     // Auto-update title from first line
     note.title = extractFirstHeadingOrTitle(note.body, 'Nova Nota');
-    if (dom.noteTitleInput) dom.noteTitleInput.value = note.title;
 
     saveNotes(true);
     renderTagsBar();
@@ -795,18 +797,19 @@
   }
 
   function showListView() {
+    state.currentView = 'list';
     dom.viewList.classList.remove('hidden');
     dom.viewDetail.classList.add('hidden');
     dom.btnBackToList.classList.add('hidden');
-    dom.appTitle.textContent = 'Notas';
+    if (dom.appTitle) dom.appTitle.textContent = 'notas';
   }
 
   function showDetailView() {
+    state.currentView = 'detail';
     dom.viewList.classList.add('hidden');
     dom.viewDetail.classList.remove('hidden');
     dom.btnBackToList.classList.remove('hidden');
-    const note = state.notes.find(n => n.id === state.selectedId);
-    dom.appTitle.textContent = note ? note.title : 'Nota';
+    if (dom.appTitle) dom.appTitle.textContent = 'notas';
   }
 
   // --- INITIALIZATION ---
@@ -823,7 +826,11 @@
 
     // Attach Header Events
     dom.btnNewNote.onclick = createNewNote;
-    dom.btnBackToList.onclick = showListView;
+    dom.btnBackToList.onclick = () => {
+      showListView();
+      state.selectedId = null;
+      render();
+    };
 
     dom.btnToggleSearch.onclick = () => {
       dom.searchRow.classList.toggle('hidden');
@@ -888,8 +895,11 @@
           const imported = JSON.parse(reader.result);
           if (Array.isArray(imported)) {
             state.notes = imported;
+            state.selectedId = null;
+            state.currentView = 'list';
             saveNotes(true);
             render();
+            showListView();
             showSettingsStatus('Backup restaurado com sucesso!', 'success');
           } else {
             showSettingsStatus('Formato de backup inválido.', 'error');
@@ -902,7 +912,6 @@
     };
 
     // Detail events
-    if (dom.noteTitleInput) dom.noteTitleInput.oninput = onTitleChange;
     dom.noteTextarea.oninput = onBodyChange;
     dom.btnDeleteNote.onclick = deleteCurrentNote;
     dom.btnPinNote.onclick = togglePinCurrentNote;
@@ -932,6 +941,7 @@
         case 'list': insertFormatSnippet('- ', '', 'Item'); break;
         case 'quote': insertFormatSnippet('> ', '', 'Citação'); break;
         case 'code': insertFormatSnippet('```\n', '\n```', 'código'); break;
+        case 'link': insertLinkSnippet(); break;
       }
     });
 
@@ -949,27 +959,9 @@
       }
     });
 
-    // Window resize
-    window.addEventListener('resize', () => {
-      const isMobile = window.innerWidth <= 768;
-      if (isMobile !== state.isMobile) {
-        state.isMobile = isMobile;
-        if (!state.isMobile) {
-          dom.viewList.classList.remove('hidden');
-          dom.viewDetail.classList.remove('hidden');
-          dom.btnBackToList.classList.add('hidden');
-        } else {
-          showListView();
-        }
-      }
-    });
-
+    // Initial view: always start at the list of notes!
+    showListView();
     render();
-
-    // Responsive initial view
-    if (state.isMobile) {
-      showListView();
-    }
 
     // Auto-sync initial run
     syncWithGitHub(false);
