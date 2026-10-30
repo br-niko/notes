@@ -9,6 +9,26 @@
   // --- STORAGE KEYS ---
   const STORAGE_KEY = 'eink_notes_data';
   const CONFIG_KEY = 'eink_notes_config';
+  const DELETED_KEY = 'eink_notes_deleted';
+
+  function getDeletedNotes() {
+    try {
+      return JSON.parse(localStorage.getItem(DELETED_KEY) || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function markNoteDeleted(id, title) {
+    const deleted = getDeletedNotes();
+    const safeTitle = (title || 'note').replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_') + '.md';
+    deleted[id] = {
+      deleted_at: Date.now(),
+      filename: safeTitle,
+    };
+    localStorage.setItem(DELETED_KEY, JSON.stringify(deleted));
+  }
+
 
   // --- STATE ---
   let state = {
@@ -355,13 +375,18 @@
 
   function confirmDeleteCurrentNote() {
     if (!state.selectedId) return;
-    state.notes = state.notes.filter(n => n.id !== state.selectedId);
+    const idToDelete = state.selectedId;
+    const note = state.notes.find(n => n.id === idToDelete);
+    markNoteDeleted(idToDelete, note ? note.title : '');
+    state.notes = state.notes.filter(n => n.id !== idToDelete);
     state.selectedId = null;
     closeDeleteModal();
-    saveNotes(true);
+    saveNotes(false);
     renderTagsBar();
     renderNotesList();
     showListView();
+    // Sincroniza imediatamente com o Gist para persistir a exclusao remota
+    syncWithGitHub(false);
   }
 
   function togglePinCurrentNote() {
@@ -424,6 +449,7 @@
 
       // 2. Se já existe, baixa e faz o merge bidirecional
       let mergedNotes = [...state.notes];
+      let gistData = null;
       if (gistId) {
         const getRes = await fetch(`https://api.github.com/gists/${gistId}`, {
           headers: {
@@ -433,7 +459,7 @@
         });
 
         if (getRes.ok) {
-          const gistData = await getRes.json();
+          gistData = await getRes.json();
           if (gistData.files && gistData.files['mailspring-notes.json']) {
             try {
               const remoteNotes = JSON.parse(gistData.files['mailspring-notes.json'].content);
@@ -452,11 +478,30 @@
         },
       };
 
-      for (const note of mergedNotes.slice(0, 30)) {
+      const activeFilenames = new Set();
+      for (const note of mergedNotes.slice(0, 50)) {
         const safeTitle = (note.title || 'note').replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_') + '.md';
+        activeFilenames.add(safeTitle);
         filesPayload[safeTitle] = {
-          content: note.body || '',
+          content: note.body || note.content || '',
         };
+      }
+
+      // Deleta arquivos .md de notas excluidas do Gist
+      const deletedNotesMap = getDeletedNotes();
+      for (const info of Object.values(deletedNotesMap)) {
+        if (info && info.filename && !activeFilenames.has(info.filename)) {
+          filesPayload[info.filename] = null;
+        }
+      }
+
+      // Deleta do Gist arquivos remotos de notas que nao existem mais
+      if (gistData && gistData.files) {
+        for (const fname of Object.keys(gistData.files)) {
+          if (fname !== 'mailspring-notes.json' && fname.endsWith('.md') && !activeFilenames.has(fname)) {
+            filesPayload[fname] = null;
+          }
+        }
       }
 
       // 4. Envia para o GitHub
@@ -536,13 +581,21 @@
 
   // Merge bidirecional baseado no timestamp mais recente de cada nota
   function mergeNotes(localNotes, remoteNotes) {
+    const deleted = getDeletedNotes();
     const map = new Map();
 
     for (const n of localNotes) {
-      map.set(n.id, n);
+      if (!deleted[n.id]) {
+        map.set(n.id, n);
+      }
     }
 
     for (const r of remoteNotes) {
+      // Se a nota foi excluida localmente, nao ressuscita!
+      if (deleted[r.id]) {
+        continue;
+      }
+
       if (!map.has(r.id)) {
         map.set(r.id, r);
       } else {
