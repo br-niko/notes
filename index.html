@@ -9,7 +9,7 @@
       location.replace(location.pathname + '/' + location.search + location.hash);
     }
   </script>
-  <link rel="manifest" href="manifest.json?v=5">
+  <link rel="manifest" href="manifest.json?v=6">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div id="app" class="container">
@@ -124,6 +124,27 @@
       </section>
     </main>
 
+    <!-- DELETE CONFIRMATION MODAL -->
+    <div id="modal-delete" class="modal-overlay hidden">
+      <div class="modal-dialog" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2>Excluir Nota</h2>
+          <button id="btn-close-delete" class="btn btn-icon" aria-label="Fechar">
+            <svg class="icon-svg" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p id="delete-modal-msg" class="modal-desc" style="font-size: 15px; margin-bottom: 12px;">
+            Deseja realmente excluir esta nota?
+          </p>
+          <div class="modal-btn-row" style="justify-content: flex-end; gap: 8px;">
+            <button id="btn-cancel-delete" class="btn">Cancelar</button>
+            <button id="btn-confirm-delete" class="btn btn-primary">Excluir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- SETTINGS MODAL -->
     <div id="modal-settings" class="modal-overlay hidden">
       <div class="modal-dialog">
@@ -170,6 +191,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

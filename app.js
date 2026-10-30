@@ -62,6 +62,12 @@
     btnSyncNow: document.getElementById('btn-sync-now'),
     btnExportBackup: document.getElementById('btn-export-backup'),
     inputImportBackup: document.getElementById('input-import-backup'),
+    // Delete modal
+    modalDelete: document.getElementById('modal-delete'),
+    deleteModalMsg: document.getElementById('delete-modal-msg'),
+    btnCloseDelete: document.getElementById('btn-close-delete'),
+    btnCancelDelete: document.getElementById('btn-cancel-delete'),
+    btnConfirmDelete: document.getElementById('btn-confirm-delete'),
   };
 
   // --- CONFIG HELPERS ---
@@ -329,16 +335,32 @@
     }, 50);
   }
 
-  function deleteCurrentNote() {
+  function openDeleteModal() {
     if (!state.selectedId) return;
     const note = state.notes.find(n => n.id === state.selectedId);
-    const title = note ? note.title : 'esta nota';
-    if (!confirm(`Deseja excluir "${title}"?`)) return;
+    const title = note && note.title ? note.title : 'esta nota';
+    if (dom.deleteModalMsg) {
+      dom.deleteModalMsg.textContent = `Deseja realmente excluir a nota "${title}"?`;
+    }
+    if (dom.modalDelete) {
+      dom.modalDelete.classList.remove('hidden');
+    }
+  }
 
+  function closeDeleteModal() {
+    if (dom.modalDelete) {
+      dom.modalDelete.classList.add('hidden');
+    }
+  }
+
+  function confirmDeleteCurrentNote() {
+    if (!state.selectedId) return;
     state.notes = state.notes.filter(n => n.id !== state.selectedId);
     state.selectedId = null;
+    closeDeleteModal();
     saveNotes(true);
-    render();
+    renderTagsBar();
+    renderNotesList();
     showListView();
   }
 
@@ -917,7 +939,15 @@
 
     // Detail events
     dom.noteTextarea.oninput = onBodyChange;
-    dom.btnDeleteNote.onclick = deleteCurrentNote;
+    dom.btnDeleteNote.onclick = openDeleteModal;
+    if (dom.btnCloseDelete) dom.btnCloseDelete.onclick = closeDeleteModal;
+    if (dom.btnCancelDelete) dom.btnCancelDelete.onclick = closeDeleteModal;
+    if (dom.btnConfirmDelete) dom.btnConfirmDelete.onclick = confirmDeleteCurrentNote;
+    if (dom.modalDelete) {
+      dom.modalDelete.onclick = (e) => {
+        if (e.target === dom.modalDelete) closeDeleteModal();
+      };
+    }
     dom.btnPinNote.onclick = togglePinCurrentNote;
 
     dom.btnModeRead.onclick = () => {
