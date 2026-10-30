@@ -100,11 +100,16 @@
     const lines = markdown.split('\n');
     for (const l of lines) {
       const trimmed = l.trim();
-      if (trimmed.startsWith('#')) {
-        return trimmed.replace(/^#+\s*/, '').trim() || fallback;
+      if (/^#{1,6}\s+/.test(trimmed)) {
+        const title = trimmed.replace(/^#+\s*/, '').trim();
+        if (title) return title;
       }
-      if (trimmed.length > 0) {
-        return trimmed.slice(0, 50);
+    }
+    for (const l of lines) {
+      const trimmed = l.trim();
+      const withoutTags = trimmed.replace(/(?:^|\s)#[a-zA-Z0-9_\u00C0-\u017F-]+/g, '').trim();
+      if (withoutTags && !withoutTags.startsWith('![') && !withoutTags.startsWith('<img')) {
+        return withoutTags.slice(0, 60);
       }
     }
     return fallback || 'Nova Nota';
@@ -317,7 +322,7 @@
       showDetailView();
     }
     setTimeout(() => {
-      dom.noteTitleInput.focus();
+      dom.noteTextarea.focus();
     }, 50);
   }
 
@@ -545,6 +550,39 @@
   }
 
   // --- FORMAT TOOLBAR ---
+  function insertLinkSnippet() {
+    const ta = dom.noteTextarea;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const val = ta.value;
+    const selected = val.slice(start, end).trim();
+    let replacement = '';
+    let selStart = 0;
+    let selEnd = 0;
+
+    if (selected) {
+      if (/^https?:\/\//i.test(selected)) {
+        replacement = `[link](${selected})`;
+        selStart = start + 1;
+        selEnd = start + 5;
+      } else {
+        replacement = `[${selected}](https://)`;
+        selStart = start + replacement.length - 8;
+        selEnd = start + replacement.length - 1;
+      }
+    } else {
+      replacement = '[link](https://)';
+      selStart = start + 1;
+      selEnd = start + 5;
+    }
+
+    ta.value = val.slice(0, start) + replacement + val.slice(end);
+    ta.focus();
+    ta.selectionStart = selStart;
+    ta.selectionEnd = selEnd;
+    onBodyChange();
+  }
+
   function insertFormatSnippet(prefix, suffix, placeholder) {
     const textarea = dom.noteTextarea;
     if (!textarea) return;
@@ -684,7 +722,7 @@
     dom.viewDetail.classList.remove('hidden');
 
     // Title
-    dom.noteTitleInput.value = note.title || '';
+    if (dom.noteTitleInput) dom.noteTitleInput.value = note.title || '';
 
     // Pin button active state
     dom.btnPinNote.style.background = note.pinned ? '#000000' : '';
@@ -744,11 +782,9 @@
     note.tags = extractTags(note.body);
     note.updated_at = new Date().toISOString();
 
-    // Auto-update title if default
-    if (!note.title || note.title === 'Nova Nota') {
-      note.title = extractFirstHeadingOrTitle(note.body, 'Nova Nota');
-      dom.noteTitleInput.value = note.title;
-    }
+    // Auto-update title from first line
+    note.title = extractFirstHeadingOrTitle(note.body, 'Nova Nota');
+    if (dom.noteTitleInput) dom.noteTitleInput.value = note.title;
 
     saveNotes(true);
     renderTagsBar();
@@ -866,7 +902,7 @@
     };
 
     // Detail events
-    dom.noteTitleInput.oninput = onTitleChange;
+    if (dom.noteTitleInput) dom.noteTitleInput.oninput = onTitleChange;
     dom.noteTextarea.oninput = onBodyChange;
     dom.btnDeleteNote.onclick = deleteCurrentNote;
     dom.btnPinNote.onclick = togglePinCurrentNote;
