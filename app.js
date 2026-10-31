@@ -805,6 +805,7 @@
       const dateStr = formatDate(note.updated_at || note.created_at);
       const snippet = (note.body || '').trim().replace(/^#+\s*/g, '').slice(0, 120);
 
+      const validTags = (note.tags || []).map(t => cleanTag(t)).filter(Boolean);
       card.innerHTML = `
         <div class="note-card-header">
           <div class="note-card-title">
@@ -813,6 +814,11 @@
           </div>
           <span class="note-card-date">${dateStr}</span>
         </div>
+        ${validTags.length > 0 ? `
+          <div class="note-card-tags">
+            ${validTags.map(t => `<span class="note-card-tag">${escapeHtml(t)}</span>`).join('')}
+          </div>
+        ` : ''}
       `;
 
       container.appendChild(card);
