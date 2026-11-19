@@ -112,14 +112,23 @@
 
   function extractTags(markdown) {
     if (!markdown) return [];
+    // Remove blocos de código (```...```) e código inline (`...`)
+    // Remove também tags HTML (<...>) para evitar que atributos como style="color: #ed1651;" sejam lidos como tags
+    const withoutCode = markdown
+      .replace(/```[\s\S]*?(?:```|$)/g, "")
+      .replace(/`[^`\n]*`/g, "")
+      .replace(/<[^>]*>/g, "");
+
     const regex = /(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g;
     const tags = new Set();
     let m;
-    while ((m = regex.exec(markdown)) !== null) {
+    while ((m = regex.exec(withoutCode)) !== null) {
       const tag = m[1].toLowerCase();
-      if (!/^\d+$/.test(tag)) {
-        tags.add(tag); // Salva sem o '#'
-      }
+      // Ignora apenas dígitos (ex: #123)
+      if (/^\d+$/.test(tag)) continue;
+      // Ignora códigos de cores hexadecimais (ex: #fff, #ffffff, #231f20, #ed1651)
+      if (/^[0-9a-f]{3}$/i.test(tag) || /^[0-9a-f]{6}$/i.test(tag) || /^[0-9a-f]{8}$/i.test(tag)) continue;
+      tags.add(tag); // Salva sem o '#'
     }
     return Array.from(tags);
   }
@@ -248,12 +257,25 @@
     // Italic: *text* or _text_
     t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    // Inline code: `code`
-    t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Inline code: `code` (guarda em placeholder para tags internas nao virarem spans)
+    const codeSnippets = [];
+    t = t.replace(/`([^`]+)`/g, (match, codeContent) => {
+      codeSnippets.push(codeContent);
+      return `___INLINE_CODE_${codeSnippets.length - 1}___`;
+    });
 
-    // Hashtags: #tag -> mostra apenas o texto da tag, sem o '#'
+    // Hashtags: #tag -> mostra apenas o texto da tag, sem o '#' (ignora hex colors e apenas numeros)
     t = t.replace(/(?:^|\s)#([a-zA-Z0-9_\u00C0-\u017F-]+)/g, (match, tagText) => {
+      const lower = tagText.toLowerCase();
+      if (/^\d+$/.test(lower) || /^[0-9a-f]{3}$/i.test(lower) || /^[0-9a-f]{6}$/i.test(lower) || /^[0-9a-f]{8}$/i.test(lower)) {
+        return match;
+      }
       return ` <span class="note-card-tag">${escapeHtml(tagText)}</span>`;
+    });
+
+    // Restaura inline code
+    t = t.replace(/___INLINE_CODE_(\d+)___/g, (match, idx) => {
+      return `<code>${codeSnippets[parseInt(idx, 10)]}</code>`;
     });
 
     return t;
@@ -292,6 +314,12 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         state.notes = JSON.parse(raw);
+        // Higieniza tags de notas salvas anteriormente, recalculando com as novas regras
+        if (Array.isArray(state.notes)) {
+          for (const note of state.notes) {
+            note.tags = extractTags(note.body || note.content || "");
+          }
+        }
       }
     } catch (e) {
       console.warn('Erro ao carregar notas:', e);
@@ -615,6 +643,7 @@
         continue;
       }
 
+      r.tags = extractTags(r.body || r.content || "");
       if (!map.has(r.id)) {
         map.set(r.id, r);
       } else {
