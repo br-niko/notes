@@ -907,8 +907,74 @@
     return d.toLocaleDateString([], { day: '2-digit', month: 'short' });
   }
 
+  // --- AUTO-CLOSE PARÊNTESES E COLCHETES ---
+  const AUTO_CLOSE_PAIRS = {
+    '(': ')',
+    '[': ']',
+  };
+  const AUTO_CLOSE_CLOSERS = new Set(Object.values(AUTO_CLOSE_PAIRS));
+
+  function handleTextareaKeydown(e) {
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+    const ta = dom.noteTextarea;
+    if (!ta) return;
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const val = ta.value;
+
+    // Auto-fechar "(" -> "()" e "[" -> "[]"
+    if (AUTO_CLOSE_PAIRS[e.key]) {
+      e.preventDefault();
+      const closeChar = AUTO_CLOSE_PAIRS[e.key];
+      const selected = val.slice(start, end);
+      ta.value = val.slice(0, start) + e.key + selected + closeChar + val.slice(end);
+      if (selected.length > 0) {
+        ta.selectionStart = start + 1;
+        ta.selectionEnd = end + 1;
+      } else {
+        ta.selectionStart = ta.selectionEnd = start + 1;
+      }
+      onBodyChange();
+      return;
+    }
+
+    // Pular sobre ")" ou "]" já existente logo à frente do cursor
+    if (AUTO_CLOSE_CLOSERS.has(e.key) && start === end && val[start] === e.key) {
+      e.preventDefault();
+      ta.selectionStart = ta.selectionEnd = start + 1;
+      return;
+    }
+
+    // Backspace entre "()" ou "[]" vazios remove o par inteiro
+    if (e.key === 'Backspace' && start === end && start > 0) {
+      const prevChar = val[start - 1];
+      const nextChar = val[start];
+      if (AUTO_CLOSE_PAIRS[prevChar] === nextChar) {
+        e.preventDefault();
+        ta.value = val.slice(0, start - 1) + val.slice(start + 1);
+        ta.selectionStart = ta.selectionEnd = start - 1;
+        onBodyChange();
+      }
+    }
+  }
+
   // --- EVENT HANDLERS ---
-  function onBodyChange() {
+  function onBodyChange(e) {
+    // Fallback para teclados virtuais (Android / E-Ink) onde keydown retorna "Unidentified"
+    if (e && e.inputType && e.inputType !== 'insertFromPaste' && e.inputType !== 'historyUndo' && e.inputType !== 'historyRedo') {
+      const inserted = e.data;
+      const ta = dom.noteTextarea;
+      if (ta && inserted && inserted.length === 1 && AUTO_CLOSE_PAIRS[inserted]) {
+        const pos = ta.selectionStart;
+        if (pos === ta.selectionEnd && pos >= 1 && ta.value[pos - 1] === inserted) {
+          const closeChar = AUTO_CLOSE_PAIRS[inserted];
+          ta.value = ta.value.slice(0, pos) + closeChar + ta.value.slice(pos);
+          ta.selectionStart = ta.selectionEnd = pos;
+        }
+      }
+    }
+
     const note = state.notes.find(n => n.id === state.selectedId);
     if (!note) return;
     note.body = dom.noteTextarea.value;
@@ -1055,6 +1121,7 @@
     };
 
     // Detail events
+    dom.noteTextarea.onkeydown = handleTextareaKeydown;
     dom.noteTextarea.oninput = onBodyChange;
     dom.btnDeleteNote.onclick = openDeleteModal;
     if (dom.btnCloseDelete) dom.btnCloseDelete.onclick = closeDeleteModal;
